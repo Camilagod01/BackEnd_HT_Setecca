@@ -99,14 +99,14 @@ class ImportsIngestCommand extends Command
                     $row = array_pad($row, count($headers), null);
 
                     try {
-                        $code  = trim((string)($row[$idx('employee_code')] ?? ''));
-                        $wd    = (string)($row[$idx('work_date')] ?? '');
-                        $cin   = (string)($row[$idx('check_in')] ?? '');
-                        $cout  = (string)($row[$idx('check_out')] ?? '');
+                        $code  = $this->cleanStr((string)($row[$idx('employee_code')] ?? ''));
+                        $wd    = $this->cleanStr((string)($row[$idx('work_date')] ?? ''));
+                        $cin   = $this->cleanStr((string)($row[$idx('check_in')] ?? ''));
+                        $cout  = $this->cleanStr((string)($row[$idx('check_out')] ?? ''));
                         $notes = (string)($row[$idx('notes')] ?? '');
 
                         if ($code === '' || $wd === '') {
-                            $this->stats['missing_required']++; 
+                            $this->stats['missing_required']++;
                             continue;
                         }
 
@@ -114,10 +114,9 @@ class ImportsIngestCommand extends Command
                         if (!$emp && $autoCreate) {
                             // Autocreación básica (opcional). Ajusta campos según tu modelo.
                             $emp = Employee::create([
-                                'code' => $this->normalizeTargetCode($code),
+                                'code'       => $this->normalizeTargetCode($code),
                                 'first_name' => 'Desconocido',
-                                'last_name' => $code,
-                                // agrega otros campos requeridos por tu modelo...
+                                'last_name'  => $code,
                             ]);
                         }
                         if (!$emp) {
@@ -129,13 +128,18 @@ class ImportsIngestCommand extends Command
                         }
 
                         $tz = 'America/Costa_Rica';
-                        try {
-                            $workDate = Carbon::parse($wd, $tz)->toDateString();
-                        } catch (\Throwable $e) {
+
+                        // Fecha robusta
+                        $workDate = $this->parseWorkDateOrNull($wd, $tz);
+                        if (!$workDate) {
                             $this->stats['parse_error']++;
+                            if ($this->stats['parse_error'] <= 5) {
+                                $this->warn("parse_error(work_date) code={$code} raw='{$wd}'");
+                            }
                             continue;
                         }
 
+                        // Horas robustas
                         $checkIn  = $this->parseTimeOrNull($cin, $workDate, $tz);
                         $checkOut = $this->parseTimeOrNull($cout, $workDate, $tz);
 
@@ -144,15 +148,23 @@ class ImportsIngestCommand extends Command
                             continue;
                         }
 
-                        // UPSERT
+                        // UPSERT (sin 'source' en la clave)
                         TimeEntry::updateOrCreate(
-                            ['employee_id' => $emp->id, 'work_date' => $workDate, 'source' => 'forms'],
-                            ['check_in' => $checkIn, 'check_out' => $checkOut, 'notes' => $notes]
+                            ['employee_id' => $emp->id, 'work_date' => $workDate],
+                            [
+                                'check_in'  => $checkIn,
+                                'check_out' => $checkOut,
+                                'notes'     => $notes,
+                                // 'source'  => 'forms', // agrega solo si existe la columna
+                            ]
                         );
 
                         $this->stats['ok']++;
                     } catch (\Throwable $ex) {
                         $this->stats['parse_error']++;
+                        if ($this->stats['parse_error'] <= 5) {
+                            $this->warn("parse_error(row) code={$code} wd='{$wd}' in='{$cin}' out='{$cout}'");
+                        }
                         continue;
                     }
                 }
@@ -201,7 +213,7 @@ class ImportsIngestCommand extends Command
         return null;
     }
 
-   protected function normalizeTargetCode(string $raw): string
+    protected function normalizeTargetCode(string $raw): string
     {
         $digits = preg_replace('/\D+/', '', $raw);
         if ($digits !== '') {
@@ -211,22 +223,61 @@ class ImportsIngestCommand extends Command
         return strtolower(trim($raw));
     }
 
-    protected function parseTimeOrNull(string $val, string $workDate, string $tz): ?Carbon
+    /** Limpia BOM, guiones unicode, espacios invisibles, múltiple espacio */
+    protected function cleanStr(?string $s): string
     {
-        $val = trim($val);
-        if ($val === '') return null;
+        $s = $s ?? '';
+        $s = preg_replace('/^\xEF\xBB\xBF/', '', $s);                 // BOM UTF-8
+        $s = preg_replace('/[\x{200B}-\x{200D}\x{FEFF}]/u', '', $s);  // zero-width
+        $s = preg_replace('/[\x{2010}-\x{2015}]/u', '-', $s);         // guiones raros → '-'
+        $s = preg_replace('/\s+/u', ' ', $s);                         // espacios múltiples
+        return trim($s);
+    }
 
-        // Si viene "HH:mm"
-        if (preg_match('/^\d{1,2}:\d{2}$/', $val)) {
-            return Carbon::parse("$workDate $val", $tz);
+    /** Fecha robusta → 'Y-m-d' o null */
+    protected function parseWorkDateOrNull(string $val, string $tz): ?string
+    {
+        $v = $this->cleanStr($val);
+        if ($v === '') return null;
+
+        $try = ['Y-m-d', 'd/m/Y', 'd-m-Y', 'm/d/Y', 'm-d-Y'];
+        foreach ($try as $fmt) {
+            try {
+                return \Carbon\Carbon::createFromFormat($fmt, $v, $tz)->toDateString();
+            } catch (\Throwable $e) {}
         }
 
-        // Intento general
-        try {
-            return Carbon::parse($val, $tz);
-        } catch (\Throwable $e) {
-            return null;
+        try { return \Carbon\Carbon::parse($v, $tz)->toDateString(); } catch (\Throwable $e) { return null; }
+    }
+
+    /** Hora robusta → Carbon o null (HH:mm, HH:mm:ss, fracción día, AM/PM es/en) */
+    protected function parseTimeOrNull(string $val, string $workDate, string $tz): ?\Carbon\Carbon
+    {
+        $v = $this->cleanStr($val);
+        if ($v === '' || $workDate === '') return null;
+
+        // 1) HH:mm (24h)
+        try { return \Carbon\Carbon::createFromFormat('Y-m-d H:i', "$workDate $v", $tz); } catch (\Throwable $e) {}
+
+        // 2) HH:mm:ss (24h)
+        try { return \Carbon\Carbon::createFromFormat('Y-m-d H:i:s', "$workDate $v", $tz); } catch (\Throwable $e) {}
+
+        // 3) Fracción de día (ej. 0.5 = 12:00)
+        if (is_numeric($v)) {
+            $mins = (int) round(((float)$v) * 24 * 60);
+            $h = (int) floor($mins / 60);
+            $m = (int) ($mins % 60);
+            $hm = sprintf('%02d:%02d', max(0, min(23, $h)), max(0, min(59, $m)));
+            try { return \Carbon\Carbon::createFromFormat('Y-m-d H:i', "$workDate $hm", $tz); } catch (\Throwable $e) {}
         }
+
+        // 4) AM/PM español/inglés
+        $v2 = preg_replace('/a\.?\s*m\.?/i', 'AM', $v);
+        $v2 = preg_replace('/p\.?\s*m\.?/i', 'PM', $v2);
+        $v2 = str_ireplace([' a. m.',' p. m.'], [' AM',' PM'], $v2);
+        try { return \Carbon\Carbon::parse("$workDate $v2", $tz); } catch (\Throwable $e) {}
+
+        return null;
     }
 
     protected function buildSummary(string $base): string

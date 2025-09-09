@@ -18,4 +18,20 @@ class Employee extends Model
         'hire_date',
         'status',
     ];
+    
+    // Normaliza el código al guardar/actualizar
+    protected static function booted(): void
+    {
+        static::saving(function (self $m) {
+            if (isset($m->code) && $m->code !== null) {
+                // bajar a minúsculas y asegurar emp-#### si tiene dígitos
+                $raw = trim((string)$m->code);
+                $digits = preg_replace('/\D+/', '', $raw);
+                $m->code = $digits !== ''
+                    ? 'emp-' . str_pad($digits, 4, '0', STR_PAD_LEFT)
+                    : strtolower($raw);
+            }
+        });
+    }
 }
+
