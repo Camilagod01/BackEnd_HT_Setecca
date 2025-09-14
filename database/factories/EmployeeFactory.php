@@ -18,7 +18,8 @@ class EmployeeFactory extends Factory
         $code = 'emp-' . str_pad((string)$num, 4, '0', STR_PAD_LEFT);
 
         return [
-            'code'       => $code,
+           // Genera emp-0001..emp-9999 únicos en la corrida
+        'code'       => 'emp-' . str_pad((string) $this->faker->unique()->numberBetween(1, 9999), 4, '0', STR_PAD_LEFT),
             'first_name' => $this->faker->firstName(),
             'last_name'  => $this->faker->lastName(),
             'email'      => $this->faker->unique()->safeEmail(),

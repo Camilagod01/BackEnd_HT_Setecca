@@ -16,6 +16,8 @@ class DatabaseSeeder extends Seeder
         $this->call([
             UserSeeder::class,
             EmployeeSeeder::class,
+            PayrollSettingsSeeder::class,
+            OvertimeRulesSeeder::class,
         ]);
 
         // Crea un usuario de prueba adicional

@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\TimeEntryController;
+use App\Http\Controllers\MetricsController;
 
 //  Público
 Route::post('/login', [AuthController::class, 'login']);
@@ -23,4 +24,14 @@ Route::middleware('auth:sanctum')->group(function () {
     // Marcaciones
     Route::get('/time-entries', [TimeEntryController::class, 'index']);
     Route::post('/time-entries', [TimeEntryController::class, 'store']);
+
+    // Métricas
+Route::get('/metrics/hours', [\App\Http\Controllers\MetricsController::class, 'hours']);
+
+// Marcaciones: actualización con auditoría
+Route::patch('/time-entries/{id}', [\App\Http\Controllers\TimeEntryController::class, 'update']);
+
+// (Opcional) Si prefieres parches en empleados:
+Route::patch('/employees/{id}', [\App\Http\Controllers\EmployeeController::class, 'update']);
+
 });

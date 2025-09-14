@@ -14,8 +14,14 @@ class TimeEntry extends Model
         'check_in',
         'check_out',
         'source',
-        'notes'
+        'notes',
+        'status',
+        'hours_worked'
     ];
+
+    protected $casts = [
+  'work_date' => 'date',
+];
 
     public function employee()
     {
