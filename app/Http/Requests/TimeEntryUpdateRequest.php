@@ -22,7 +22,9 @@ class TimeEntryUpdateRequest extends FormRequest
     public function rules(): array
     {
         return [
-            //
+            'in_at'   => 'sometimes|date',
+            'out_at'  => 'sometimes|nullable|date|after_or_equal:in_at',
+            'status'  => 'sometimes|in:valid,corrected,rejected',
         ];
     }
 }

@@ -21,8 +21,14 @@ class EmployeeUpdateRequest extends FormRequest
      */
     public function rules(): array
     {
+        $id = $this->route('id');
         return [
-            //
+            'code'       => "sometimes|string|max:50|unique:employees,code,{$id}",
+            'first_name' => 'sometimes|string|max:100',
+            'last_name'  => 'sometimes|string|max:100',
+            'email'      => "sometimes|nullable|email|unique:employees,email,{$id}",
+            'position'   => 'sometimes|nullable|string|max:150',
+            'status'     => 'sometimes|in:active,inactive',
         ];
     }
 }

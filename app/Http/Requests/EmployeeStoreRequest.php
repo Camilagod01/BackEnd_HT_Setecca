@@ -22,7 +22,12 @@ class EmployeeStoreRequest extends FormRequest
     public function rules(): array
     {
         return [
-            //
+            'code'       => 'required|string|max:50|unique:employees,code',
+            'first_name' => 'required|string|max:100',
+            'last_name'  => 'required|string|max:100',
+            'email'      => 'nullable|email|unique:employees,email',
+            'position'   => 'nullable|string|max:150',
+            'status'     => 'nullable|in:active,inactive',
         ];
     }
 }

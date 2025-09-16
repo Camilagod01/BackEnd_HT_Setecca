@@ -22,7 +22,9 @@ class MetricsHoursRequest extends FormRequest
     public function rules(): array
     {
         return [
-            //
+            'employee_id' => 'required|exists:employees,id',
+            'from'        => 'required|date',
+            'to'          => 'required|date|after_or_equal:from',
         ];
     }
 }
