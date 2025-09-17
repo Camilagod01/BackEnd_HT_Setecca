@@ -40,7 +40,7 @@ class EmployeeController extends Controller
     }
 
     // POST /api/employees
-    public function store(Request $request)
+    /*public function store(Request $request)
     {
         $data = $request->validate([
             'code'       => ['required','string','max:255','unique:employees,code'],
@@ -54,7 +54,32 @@ class EmployeeController extends Controller
 
         $employee = Employee::create($data);
         return response()->json($employee, 201);
-    }
+    }*/
+
+public function store(Request $request)
+{
+    $data = $request->validate([
+        'first_name' => 'required|string|max:255',
+        'last_name'  => 'required|string|max:255',
+        'email'      => 'nullable|email|unique:employees,email',
+        'position'   => 'nullable|string|max:255',
+        'hire_date'  => 'nullable|date',
+        'status'     => 'nullable|in:active,inactive',
+        'code'       => 'nullable|string|max:255|unique:employees,code',
+    ]);
+
+    // Defaults
+    if (!isset($data['status'])) $data['status'] = 'active';
+
+    $employee = new \App\Models\Employee($data);
+    $employee->save();
+
+    return response()->json($employee, 201);
+}
+
+
+
+
 
     // PUT /api/employees/{id}
     public function update(Request $request, $id)

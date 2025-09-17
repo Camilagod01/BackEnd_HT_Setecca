@@ -35,3 +35,8 @@ Route::patch('/time-entries/{id}', [\App\Http\Controllers\TimeEntryController::c
 Route::patch('/employees/{id}', [\App\Http\Controllers\EmployeeController::class, 'update']);
 
 });
+
+
+
+
+Route::apiResource('employees', EmployeeController::class)->only(['index','show','store','update']);
