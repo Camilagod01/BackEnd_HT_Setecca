@@ -25,24 +25,20 @@ Route::middleware('auth:sanctum')->group(function () {
     // Marcaciones
     Route::get('/time-entries', [TimeEntryController::class, 'index']);
     Route::post('/time-entries', [TimeEntryController::class, 'store']);
+    Route::patch('/time-entries/{id}', [\App\Http\Controllers\TimeEntryController::class, 'update']);
 
     // Métricas
-Route::get('/metrics/hours', [\App\Http\Controllers\MetricsController::class, 'hours']);
+    Route::get('/metrics/hours', [\App\Http\Controllers\MetricsController::class, 'hours']);
 
-// Marcaciones: actualización con auditoría
-Route::patch('/time-entries/{id}', [\App\Http\Controllers\TimeEntryController::class, 'update']);
+    // (Opcional) Si prefieres parches en empleados:
+    Route::patch('/employees/{id}', [\App\Http\Controllers\EmployeeController::class, 'update']);
 
-// (Opcional) Si prefieres parches en empleados:
-Route::patch('/employees/{id}', [\App\Http\Controllers\EmployeeController::class, 'update']);
-
-// Exportar marcaciones
+    // Exportar marcaciones
   
-Route::get('/exports/time-entries', [TimeEntryExportController::class, 'global']);            // vista global
-Route::get('/employees/{id}/time-entries/export', [TimeEntryExportController::class, 'byEmployeeId'])
+    Route::get('/exports/time-entries', [TimeEntryExportController::class, 'global']);            // vista global
+    Route::get('/employees/{id}/time-entries/export', [TimeEntryExportController::class, 'byEmployeeId'])
      ->name('employees.time-entries.export'); // por empleado
 });
 
 
 
-
-Route::apiResource('employees', EmployeeController::class)->only(['index','show','store','update']);
