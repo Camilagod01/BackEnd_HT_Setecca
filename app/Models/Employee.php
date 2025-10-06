@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 
 class Employee extends Model
@@ -15,10 +16,30 @@ class Employee extends Model
         'first_name',
         'last_name',
         'email',
-        'position',
+        'position_id',
         'hire_date',
         'status',
     ];
+
+    protected $casts = [
+        'hire_date' => 'date:Y-m-d',
+    ];
+
+    protected $appends = [
+        'full_name',
+    ];
+
+    /** Relación: Empleado pertenece a un Puesto */
+    public function position(): BelongsTo
+    {
+        return $this->belongsTo(Position::class);
+    }
+
+    /** Accesor conveniente para UI/reportes */
+    public function getFullNameAttribute(): string
+    {
+        return trim(($this->first_name ?? '') . ' ' . ($this->last_name ?? ''));
+    }
     
     // Normaliza el código al guardar/actualizar
     protected static function booted(): void
