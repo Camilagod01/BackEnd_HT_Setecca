@@ -30,4 +30,9 @@ class Position extends Model
     {
         return $q->where('code', $code);
     }
+
+    public function position()
+{
+    return $this->belongsTo(\App\Models\Position::class);
+}
 }

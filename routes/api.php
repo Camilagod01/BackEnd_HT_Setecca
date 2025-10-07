@@ -6,6 +6,7 @@ use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\TimeEntryController;
 use App\Http\Controllers\MetricsController;
 use App\Http\Controllers\TimeEntryExportController;
+use App\Http\Controllers\Api\PositionController;
 
 //  Público
 Route::post('/login', [AuthController::class, 'login']);
@@ -34,11 +35,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/employees/{id}', [\App\Http\Controllers\EmployeeController::class, 'update']);
 
     // Exportar marcaciones
-  
+
     Route::get('/exports/time-entries', [TimeEntryExportController::class, 'global']);            // vista global
     Route::get('/employees/{id}/time-entries/export', [TimeEntryExportController::class, 'byEmployeeId'])
-     ->name('employees.time-entries.export'); // por empleado
+        ->name('employees.time-entries.export'); // por empleado
+    // Posiciones
+    Route::get('/positions', [PositionController::class, 'index']);
+    Route::patch('/employees/{employee}/position', [EmployeeController::class, 'updatePosition']);
+
+     
 });
-
-
-

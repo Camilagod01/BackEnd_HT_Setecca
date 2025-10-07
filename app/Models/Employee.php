@@ -16,9 +16,9 @@ class Employee extends Model
         'first_name',
         'last_name',
         'email',
-        'position_id',
         'hire_date',
         'status',
+        'position_id',
     ];
 
     protected $casts = [
@@ -30,10 +30,10 @@ class Employee extends Model
     ];
 
     /** Relación: Empleado pertenece a un Puesto */
-    public function position(): BelongsTo
-    {
-        return $this->belongsTo(Position::class);
-    }
+    public function position()
+{
+    return $this->belongsTo(\App\Models\Position::class);
+}
 
     /** Accesor conveniente para UI/reportes */
     public function getFullNameAttribute(): string
@@ -55,6 +55,13 @@ class Employee extends Model
             }
         });
     }
+
+    //mostrar empleado por id con su puesto
+    public function show(int $id)
+{
+    $emp = Employee::with('position')->findOrFail($id);
+    return response()->json($emp);
+}
 
 
 }

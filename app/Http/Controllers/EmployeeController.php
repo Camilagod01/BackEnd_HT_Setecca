@@ -9,34 +9,22 @@ use Illuminate\Validation\Rule;
 class EmployeeController extends Controller
 {
     // GET /api/employees?search=&status=&page=
-    public function index(Request $request)
-    {
-        $q = Employee::query();
+    public function index()
+{
+    $employees = \App\Models\Employee::leftJoin('positions', 'employees.position_id', '=', 'positions.id')
+        ->select('employees.*', 'positions.name as position_name')
+        ->orderBy('employees.id', 'desc')
+        ->paginate(10);
 
-        if ($s = $request->get('search')) {
-            $q->where(function ($sub) use ($s) {
-                $sub->where('code', 'like', "%{$s}%")
-                    ->orWhere('first_name', 'like', "%{$s}%")
-                    ->orWhere('last_name', 'like', "%{$s}%")
-                    ->orWhere('email', 'like', "%{$s}%");
-            });
-        }
+    return response()->json($employees);
+}
 
-        if ($status = $request->get('status')) {
-            $q->where('status', $status); // 'active' | 'inactive'
-        }
-
-        return response()->json($q->orderBy('id', 'desc')->paginate(20));
-    }
 
     // GET /api/employees/{id}
     public function show($id)
     {
-        $employee = Employee::find($id);
-        if (!$employee) {
-            return response()->json(['message' => 'Empleado no encontrado'], 404);
-        }
-        return response()->json($employee);
+        $emp = \App\Models\Employee::with('position')->findOrFail($id);
+    return response()->json($emp);
     }
 
     // POST /api/employees
@@ -62,7 +50,7 @@ public function store(Request $request)
         'first_name' => 'required|string|max:255',
         'last_name'  => 'required|string|max:255',
         'email'      => 'nullable|email|unique:employees,email',
-        'position'   => 'nullable|string|max:255',
+        'position_id' => ['required','exists:positions,id'],
         'hire_date'  => 'nullable|date',
         'status'     => 'nullable|in:active,inactive',
         'code'       => 'nullable|string|max:255|unique:employees,code',
@@ -99,8 +87,12 @@ public function store(Request $request)
             'status'     => ['sometimes', Rule::in(['active','inactive'])],
         ]);
 
-        $employee->update($data);
-        return response()->json($employee);
+         $emp = \App\Models\Employee::create($data);
+
+    // opcional: eager load
+    $emp->load('position');
+
+    return response()->json($emp, 201);
     }
 
     // DELETE /api/employees/{id}
@@ -113,4 +105,17 @@ public function store(Request $request)
         $employee->delete();
         return response()->json(['message' => 'Eliminado']);
     }
+
+ public function updatePosition(Request $request, Employee $employee)
+{
+    $data = $request->validate([
+        'position_id' => ['nullable','exists:positions,id'],
+    ]);
+
+    $employee->position_id = $data['position_id'] ?? null;
+    $employee->save();
+
+    $employee->load('position'); // para que el front reciba el nombre del puesto
+    return response()->json($employee);
+}
 }
