@@ -1,7 +1,9 @@
 <?php
-namespace App\Http\Controllers;
+
+namespace App\Services;
 
 use App\Models\TimeEntry;
+use App\Models\SickLeave;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Illuminate\Support\Collection;
@@ -23,16 +25,19 @@ class HoursCalculatorService
                 'total'      => 0.0,
                 'extra_day'  => 0.0,
                 'extra_week' => 0.0,
+                'sick_50pct_days' => 0,
+                'sick_0pct_days'  => 0,
                 'days'       => [],
                 'weeks'      => [],
             ];
         }
 
-        // Normaliza fechas
         $fromDate = Carbon::parse($from)->toDateString();
         $toDate   = Carbon::parse($to)->toDateString();
 
-        // SELECT defensivo
+        // ===== Incapacidades del rango =====
+        $sickByDate = $this->buildSickDateMap($employeeId, $fromDate, $toDate);
+
         $cols = ['id', 'employee_id', 'work_date'];
         if ($hasCheckIn)     $cols[] = 'check_in';
         if ($hasCheckOut)    $cols[] = 'check_out';
@@ -44,26 +49,25 @@ class HoursCalculatorService
             ->orderBy('work_date')->orderBy('id')
             ->get($cols);
 
-       $byDate = $rows->groupBy(function ($r) {
-    // Normaliza siempre a 'YYYY-MM-DD', sea string, timestamp o Carbon
-    return \Carbon\Carbon::parse($r->work_date)->toDateString();
-});
-
+        $byDate = $rows->groupBy(fn ($r) => Carbon::parse($r->work_date)->toDateString());
 
         $period = CarbonPeriod::create($fromDate, $toDate);
         $totalWorked = 0.0;
         $totalExtraDay = 0.0;
         $byDay = [];
         $weeklyWorked = [];
+        $sick50Days = 0;
+        $sick0Days  = 0;
 
         foreach ($period as $day) {
             $date = $day->toDateString();
             $dow  = $day->dayOfWeekIso; // 1..7
 
-            // Jornada: Lun–Jue 10h, Vie 8h, Sáb/Dom 0h
+            // Jornada por defecto (luego parametrizamos con payroll_settings)
             $expected = in_array($dow, [1,2,3,4]) ? 10.0 : ($dow === 5 ? 8.0 : 0.0);
 
-            $worked = $this->sumWorkedHoursForDate(
+            // Horas trabajadas crudas para ese día (antes de incapacidad)
+            $rawWorked = $this->sumWorkedHoursForDate(
                 $byDate->get($date, collect()),
                 $date,
                 $hasCheckIn,
@@ -71,21 +75,39 @@ class HoursCalculatorService
                 $hasHoursWorked
             );
 
+            $sick = $sickByDate[$date] ?? null;
+            $sickType  = $sick['type']  ?? null;
+            $sickNotes = $sick['notes'] ?? null;
+
+            // Ajuste por incapacidad
+            if ($sickType === '0pct') {
+                $sick0Days++;
+                $worked = 0.0; // No cuenta
+            } else {
+                $worked = $rawWorked; // 50% cuenta normal en métricas
+                if ($sickType === '50pct') {
+                    $sick50Days++;
+                }
+            }
+
             $extraDay = max(0.0, $worked - $expected);
 
             $totalWorked   += $worked;
             $totalExtraDay += $extraDay;
 
             $byDay[] = [
-                'date'      => $date,
-                'weekday'   => $day->isoFormat('ddd'),
-                'expected'  => round($expected, 2),
-                'worked'    => round($worked, 2),
-                'extra_day' => round($extraDay, 2),
+                'date'              => $date,
+                'weekday'           => $day->isoFormat('ddd'),
+                'expected'          => round($expected, 2),
+                'worked'            => round($worked, 2),
+                'extra_day'         => round($extraDay, 2),
+                'sick_leave_type'   => $sickType,
+                'sick_leave_notes'  => $sickNotes,
+                'raw_worked'        => round($rawWorked, 2),
             ];
 
             $wkKey = $day->isoWeekYear . '-W' . str_pad((string)$day->isoWeek, 2, '0', STR_PAD_LEFT);
-            $weeklyWorked[$wkKey] = ($weeklyWorked[$wkKey] ?? 0) + $worked;
+            $weeklyWorked[$wkKey] = ($weeklyWorked[$wkKey] ?? 0) + $worked; // ya ajustado
         }
 
         // Extra semanal (>48h)
@@ -103,17 +125,43 @@ class HoursCalculatorService
             'total'      => round($totalWorked, 2),
             'extra_day'  => round($totalExtraDay, 2),
             'extra_week' => round($totalExtraWeek, 2),
+            'sick_50pct_days' => $sick50Days,
+            'sick_0pct_days'  => $sick0Days,
             'days'       => $byDay,
             'weeks'      => $weeks,
         ];
     }
 
     /**
-     * Suma horas para una fecha (acepta):
-     * - check_in/check_out como DATETIME (2025-10-02 07:16:00)
-     * - check_in/check_out como hora (07:16:00)
-     * - hours_worked (numérico)
+     * Construye un mapa fecha => tipo ('0pct' / '50pct') para el rango dado.
+     * Si coexisten, prevalece '0pct'.
      */
+    private function buildSickDateMap(int $employeeId, string $fromDate, string $toDate): array
+    {
+        $leaves = SickLeave::query()
+            ->where('employee_id', $employeeId)
+            ->where('status', 'approved')
+            ->whereDate('start_date', '<=', $toDate)
+            ->whereDate('end_date', '>=', $fromDate)
+            ->get(['start_date','end_date','type','notes']);
+
+        $map = [];
+        foreach ($leaves as $lv) {
+            $period = CarbonPeriod::create($lv->start_date, $lv->end_date);
+            foreach ($period as $d) {
+                $k = $d->toDateString();
+                // si coexisten, '0pct' prevalece
+                if (!isset($map[$k]) || $lv->type === '0pct') {
+                    $map[$k] = [
+                        'type'  => $lv->type,   // '0pct' | '50pct'
+                        'notes' => $lv->notes,
+                    ];
+                }
+            }
+        }
+        return $map;
+    }
+
     private function sumWorkedHoursForDate(
         Collection $entries,
         string $date,
@@ -145,26 +193,21 @@ class HoursCalculatorService
         return round($worked, 2);
     }
 
-    /** Acepta DATETIME completo o solo hora; si es hora, la combina con $date */
     private function parseCheckField(string $date, string $value): ?Carbon
     {
         $v = trim($value);
 
-        // Si tiene fecha y hora, parsea directo
         if (preg_match('/\d{4}-\d{2}-\d{2}/', $v) && preg_match('/\d{2}:\d{2}/', $v)) {
             try { return Carbon::parse($v); } catch (\Throwable $e) {}
         }
 
-        // Si parece solo hora, combínala con la fecha
         return $this->parseTimeFlexible($date, $v);
     }
 
-    /** Parser tolerante para horas (incluye am/pm en español) */
     private function parseTimeFlexible(string $date, string $time): ?Carbon
     {
         $raw = trim($time);
 
-        // Normaliza AM/PM en español
         $norm = mb_strtolower($raw, 'UTF-8');
         $norm = str_replace(['a. m.', 'a.m.', 'am.', ' a m '], ' am ', $norm);
         $norm = str_replace(['p. m.', 'p.m.', 'pm.', ' p m '], ' pm ', $norm);

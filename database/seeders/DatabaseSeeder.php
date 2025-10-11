@@ -12,6 +12,8 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        $this->call(SickLeaveSeeder::class);
+        
         // Ejecuta otros seeders
         $this->call([
             UserSeeder::class,

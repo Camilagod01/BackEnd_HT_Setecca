@@ -7,32 +7,44 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Position extends Model
 {
-    // Si usas guarded/ fillable, elige uno (recomendado fillable)
     protected $fillable = [
-        'code',           // p.ej. GER, TEC, ADM
-        'name',           // Gerente, Técnico, etc.
+        'code',
+        'name',
         'base_hourly_rate',
-        'currency',       // CRC / USD (por ahora fijo aquí)
+        'currency',
+        'salary_type',
+        'default_salary_amount',
+        'default_salary_currency',
+        'is_active',
     ];
 
     protected $casts = [
         'base_hourly_rate' => 'float',
+        'default_salary_amount' => 'float',
+        'is_active' => 'boolean',
     ];
 
-    /** Empleados que tienen este puesto */
     public function employees(): HasMany
     {
-        return $this->hasMany(Employee::class);
+        return $this->hasMany(Employee::class, 'position_id');
     }
 
-    /** Búsqueda rápida por código */
-    public function scopeCode($q, string $code)
+    public function defaultComp(): array
     {
-        return $q->where('code', $code);
-    }
+        $salaryType = $this->salary_type ?? 'monthly';
+        $amount = $this->default_salary_amount;
 
-    public function position()
-{
-    return $this->belongsTo(\App\Models\Position::class);
-}
+        if ($amount === null && $this->base_hourly_rate !== null) {
+            $salaryType = 'hourly';
+            $amount = (float) $this->base_hourly_rate;
+        }
+
+        $currency = $this->default_salary_currency ?? $this->currency ?? 'CRC';
+
+        return [
+            'salary_type' => $salaryType,
+            'salary_amount' => (float) $amount,
+            'salary_currency' => $currency,
+        ];
+    }
 }
