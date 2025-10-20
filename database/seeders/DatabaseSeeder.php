@@ -28,5 +28,10 @@ class DatabaseSeeder extends Seeder
             'email' => 'test@example.com',
             'password' => bcrypt('password123'),
         ]);
+
+        //Crea prestamos y sus cuotas
+        $this->call([
+        LoanWithPaymentsSeeder::class,
+    ]);
     }
 }

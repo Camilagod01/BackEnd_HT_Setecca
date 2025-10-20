@@ -194,4 +194,27 @@ class EmployeeController extends Controller
 
         return response()->json(['message' => 'Eliminado']);
     }
+
+    //Opciones de empleados
+    public function options(\Illuminate\Http\Request $request)
+{
+    $q = trim((string)$request->get('q', ''));
+    $limit = (int)$request->get('per_page', 20);
+
+    $rows = \App\Models\Employee::query()
+        ->when($q !== '', function ($qb) use ($q) {
+            $qb->where(function ($w) use ($q) {
+                $w->where('code', 'like', "%{$q}%")
+                  ->orWhere('first_name', 'like', "%{$q}%")
+                  ->orWhere('last_name', 'like', "%{$q}%");
+            });
+        })
+        ->orderBy('first_name')
+        ->orderBy('last_name')
+        ->limit($limit)
+        ->get(['id', 'code', 'first_name', 'last_name']);
+
+    return response()->json($rows);
+}
+
 }

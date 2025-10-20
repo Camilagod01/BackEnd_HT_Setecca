@@ -4,63 +4,15 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use App\Models\SickLeave;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
+use App\Models\SickLeave;
 use Carbon\Carbon;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
 
 class SickLeaveController extends Controller
 {
-
-    use HasFactory;
-
-    protected $fillable = [
-        'employee_id',
-        'start_date',
-        'end_date',
-        'type',      // '50pct' | '0pct'
-        'status',    // 'draft' | 'approved' | 'rejected' (si lo usas)
-        'notes',
-    ];
-
-    protected $casts = [
-        'start_date' => 'date:Y-m-d',
-        'end_date'   => 'date:Y-m-d',
-    ];
-
-    public function employee()
-    {
-        return $this->belongsTo(Employee::class);
-    }
-
     /**
-     * Scope para buscar rangos que se superponen.
-     *
-     * @param \Illuminate\Database\Eloquent\Builder $q
-     * @param int $employeeId
-     * @param string|\DateTimeInterface $start Y-m-d
-     * @param string|\DateTimeInterface $end   Y-m-d
-     * @param int|null $excludeId  (opcional) id a excluir (útil en update)
-    */
-
-    public function scopeOverlapping($q, int $employeeId, $start, $end, ?int $excludeId = null)
-    {
-        $q->where('employee_id', $employeeId)
-          // solapa si (startA <= endB) y (endA >= startB)
-          ->whereDate('start_date', '<=', $end)
-          ->whereDate('end_date', '>=', $start);
-
-        if ($excludeId) {
-            $q->where('id', '!=', $excludeId);
-        }
-
-        return $q;
-    }
-
-    /**
-     * GET /api/sick-leaves?employee_id=&from=&to=
+     * GET /api/sick-leaves?employee_id=&status=&provider=&from=&to=
      * Lista paginada y filtrada.
      */
     public function index(Request $request)
@@ -71,11 +23,15 @@ class SickLeaveController extends Controller
             if ($emp = $request->get('employee_id')) {
                 $q->where('employee_id', $emp);
             }
-
+            if ($st = $request->get('status')) {
+                $q->where('status', $st);
+            }
+            if ($prov = $request->get('provider')) {
+                $q->where('provider', $prov);
+            }
             if ($from = $request->get('from')) {
                 $q->whereDate('end_date', '>=', $from);
             }
-
             if ($to = $request->get('to')) {
                 $q->whereDate('start_date', '<=', $to);
             }
@@ -87,7 +43,7 @@ class SickLeaveController extends Controller
                 $q->orderByDesc('start_date')->paginate($perPage)
             );
         } catch (\Throwable $e) {
-            Log::error("Error en SickLeaveController@index: ".$e->getMessage());
+            Log::error("Error en SickLeaveController@index: " . $e->getMessage());
             return response()->json(['error' => 'Error interno del servidor'], 500);
         }
     }
@@ -99,12 +55,19 @@ class SickLeaveController extends Controller
     public function store(Request $request)
     {
         $data = $request->validate([
-            'employee_id' => ['required', 'exists:employees,id'],
-            'start_date'  => ['required', 'date'],
-            'end_date'    => ['required', 'date', 'after_or_equal:start_date'],
-            'type'        => ['required', Rule::in(['50pct', '0pct'])],
-            'notes'       => ['nullable', 'string'],
+            'employee_id'       => ['required', 'exists:employees,id'],
+            'start_date'        => ['required', 'date'],
+            'end_date'          => ['required', 'date', 'after_or_equal:start_date'],
+            'provider'          => ['required', Rule::in(['CCSS', 'INS', 'OTHER'])],
+            'coverage_percent'  => ['required', 'numeric', 'min:0', 'max:100'],
+            'status'            => ['required', Rule::in(['pending', 'approved', 'rejected'])],
+            'notes'             => ['nullable', 'string', 'max:2000'],
         ]);
+
+        // Calcular días totales
+        $start = Carbon::parse($data['start_date']);
+        $end   = Carbon::parse($data['end_date']);
+        $data['total_days'] = $start->diffInDays($end) + 1;
 
         // Validar superposición
         $overlap = SickLeave::overlapping(
@@ -121,7 +84,7 @@ class SickLeaveController extends Controller
 
         $leave = SickLeave::create($data);
 
-        return response()->json($leave, 201);
+        return response()->json($leave->fresh()->load('employee:id,first_name,last_name,code'), 201);
     }
 
     /**
@@ -133,18 +96,21 @@ class SickLeaveController extends Controller
         $leave = SickLeave::findOrFail($id);
 
         $data = $request->validate([
-            'start_date'  => ['sometimes', 'date'],
-            'end_date'    => ['sometimes', 'date', 'after_or_equal:start_date'],
-            'type'        => ['sometimes', Rule::in(['50pct', '0pct'])],
-            'notes'       => ['nullable', 'string'],
+            'start_date'        => ['sometimes', 'date'],
+            'end_date'          => ['sometimes', 'date', 'after_or_equal:start_date'],
+            'provider'          => ['sometimes', Rule::in(['CCSS', 'INS', 'OTHER'])],
+            'coverage_percent'  => ['sometimes', 'numeric', 'min:0', 'max:100'],
+            'status'            => ['sometimes', Rule::in(['pending', 'approved', 'rejected'])],
+            'notes'             => ['nullable', 'string', 'max:2000'],
         ]);
 
-        // Validar superposición si cambia fechas
-        $empId = $leave->employee_id;
+        // Recalcular total_days si cambian fechas
         $start = $data['start_date'] ?? $leave->start_date->format('Y-m-d');
         $end   = $data['end_date'] ?? $leave->end_date->format('Y-m-d');
+        $data['total_days'] = Carbon::parse($start)->diffInDays(Carbon::parse($end)) + 1;
 
-        $overlap = SickLeave::overlapping($empId, $start, $end, $leave->id)->exists();
+        // Validar solapamiento
+        $overlap = SickLeave::overlapping($leave->employee_id, $start, $end, $leave->id)->exists();
         if ($overlap) {
             return response()->json([
                 'message' => 'Ya existe otra incapacidad que se superpone con el rango indicado.'
@@ -152,7 +118,7 @@ class SickLeaveController extends Controller
         }
 
         $leave->update($data);
-        return response()->json($leave);
+        return response()->json($leave->fresh());
     }
 
     /**

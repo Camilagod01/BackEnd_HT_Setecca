@@ -1,7 +1,7 @@
 <?php
 
 return [
-    'paths' => ['api/*', 'sanctum/csrf-cookie'],
+    'paths' => ['api/*'],  //,'sanctum/csrf-cookie'
     'allowed_methods' => ['*'],
 
     // Permite el front de Vite y el front servido por Apache
