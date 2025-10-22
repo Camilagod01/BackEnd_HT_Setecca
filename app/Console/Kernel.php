@@ -4,6 +4,7 @@ namespace App\Console;
 
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
+use Illuminate\Support\Facades\Log;
 
 class Kernel extends ConsoleKernel
 {
@@ -12,6 +13,7 @@ class Kernel extends ConsoleKernel
      */
     protected $commands = [
         \App\Console\Commands\ImportsIngestCommand::class,
+        \App\Console\Commands\GenerateDefaultHolidays::class,
     ];
 
     /**
@@ -19,7 +21,19 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
-        // $schedule->command('imports:ingest')->hourly();
+        // 1) Prueba con escritura directa desde PHP (sin logger)
+        $schedule->call(function () {
+            @file_put_contents('C:\Temp\cronphp.txt', date('c') . PHP_EOL, FILE_APPEND);
+        })->everyMinute()->timezone('America/Costa_Rica');
+
+        // 2) Prueba con comando del sistema (sin PHP/Laravel)
+        $schedule->exec('cmd /c echo %DATE% %TIME% >> C:\Temp\cronexec.txt')
+                ->everyMinute()->timezone('America/Costa_Rica');
+
+        $schedule->command('imports:ingest')->hourly();
+        $schedule->call(function () {
+            Log::info('[Scheduler] Heartbeat 1min: '.now()->toDateTimeString());
+        })->everyMinute()->timezone('America/Costa_Rica');
     }
 
     /**

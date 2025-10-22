@@ -1,0 +1,11 @@
+code,first_name,last_name,email,hire_date,status,position_id,use_position_salary,salary_type,salary_override_amount,salary_override_currency,created_at,updated_at
+emp-0001,Ana,Gómez,ana.gomez@example.com,2023-03-12,active,1,1,hourly,0.0,CRC,2025-10-22 17:43:32,2025-10-22 17:43:32
+emp-0002,Carlos,Mendoza,carlos.mendoza@example.com,2022-09-01,active,2,1,monthly,0.0,CRC,2025-10-22 17:43:32,2025-10-22 17:43:32
+emp-0003,Juanito,Ramírez,juanito.ramirez@example.com,2021-06-15,active,4,1,hourly,0.0,CRC,2025-10-22 17:43:32,2025-10-22 17:43:32
+emp-0004,María,López,maria.lopez@example.com,2024-01-20,active,3,1,hourly,0.0,CRC,2025-10-22 17:43:32,2025-10-22 17:43:32
+emp-0005,Diego,Paredes,diego.paredes@example.com,2020-11-05,active,4,1,hourly,0.0,CRC,2025-10-22 17:43:32,2025-10-22 17:43:32
+emp-0006,Lucía,Torres,lucia.torres@example.com,2019-08-30,active,5,1,hourly,0.0,CRC,2025-10-22 17:43:32,2025-10-22 17:43:32
+emp-0007,Óscar,Ruiz,oscar.ruiz@example.com,2018-05-10,active,6,1,monthly,0.0,CRC,2025-10-22 17:43:32,2025-10-22 17:43:32
+emp-0008,Paula,Jiménez,paula.jimenez@example.com,2023-12-02,active,7,1,hourly,0.0,CRC,2025-10-22 17:43:32,2025-10-22 17:43:32
+emp-0009,Ricardo,Salas,ricardo.salas@example.com,2021-02-14,active,8,1,hourly,0.0,CRC,2025-10-22 17:43:32,2025-10-22 17:43:32
+emp-0010,Sofía,Mora,sofia.mora@example.com,2022-07-19,active,9,1,hourly,0.0,CRC,2025-10-22 17:43:32,2025-10-22 17:43:32

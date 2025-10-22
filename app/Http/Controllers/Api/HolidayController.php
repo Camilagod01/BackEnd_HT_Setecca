@@ -7,6 +7,7 @@ use App\Http\Requests\Holiday\StoreHolidayRequest;
 use App\Http\Requests\Holiday\UpdateHolidayRequest;
 use App\Models\Holiday;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
 
 class HolidayController extends Controller
@@ -14,30 +15,68 @@ class HolidayController extends Controller
     // Sin authorizeResource y sin middleware "can:*"
 
     /**
-     * GET /api/holidays?year=&month=&from=&to=&scope=&paid=&per_page=
+     * GET /api/holidays?year=&month=&from=&to=&scope=&origin=&paid=&per_page=
      */
     public function index(Request $request)
     {
         try {
+            // Normaliza parámetros
+            $perPage = (int) $request->integer('per_page', 50);
+            if ($perPage < 0) { $perPage = 50; }
+
+            $year  = $request->integer('year');   // null si no viene
+            $month = $request->integer('month');  // null si no viene
+
+            // --- AUTOGENERACIÓN SI NO EXISTEN FERIADOS PARA ESE AÑO ---
+            if ($year && $year >= 1900 && $year <= 2100) {
+                $exists = Holiday::whereYear('date', $year)
+                    ->where('origin', 'default')
+                    ->exists();
+
+                if (!$exists) {
+                    try {
+                        // No pasamos --include-sundays porque tu comando no la define
+                        Artisan::call('holidays:generate-default', [
+                            'year' => $year,
+                            // '--reset' => '0', // descomenta si tu comando define esta opción
+                        ]);
+                        Log::info("[Holidays] Generados automáticamente al consultar el año {$year}");
+                    } catch (\Throwable $ex) {
+                        Log::error("Autogeneración feriados {$year} falló: {$ex->getMessage()} @{$ex->getFile()}:{$ex->getLine()}");
+                        // No bloqueamos la respuesta si falla la autogeneración
+                    }
+                }
+            }
+
+            // --- CONSTRUCCIÓN DE CONSULTA ---
             $q = Holiday::query()
-                ->when($request->filled('scope'), fn($qq) => $qq->where('scope', $request->scope))
+                // scope: si no viene, mostramos national + company
+                ->when(
+                    $request->filled('scope'),
+                    fn ($qq) => $qq->where('scope', $request->scope),
+                    fn ($qq) => $qq->whereIn('scope', ['national', 'company'])
+                )
+                // origin: si no viene, mostramos manual + default
+                ->when(
+                    $request->filled('origin') && in_array($request->origin, ['manual', 'default'], true),
+                    fn ($qq) => $qq->where('origin', $request->origin),
+                    fn ($qq) => $qq->whereIn('origin', ['manual', 'default'])
+                )
+                // paid: "1","0","true","false"
                 ->when($request->filled('paid'), function ($qq) use ($request) {
-                    // paid puede venir como "1","0","true","false"
                     $val = filter_var($request->paid, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE);
                     if (!is_null($val)) {
                         $qq->where('paid', $val);
                     }
                 });
 
-            // Año y mes rápidos
-            if ($request->filled('year')) {
-                $q->whereYear('date', (int)$request->year);
+            // Año / mes / rango
+            if ($year) {
+                $q->whereYear('date', (int) $year);
             }
-            if ($request->filled('month')) {
-                $q->whereMonth('date', (int)$request->month);
+            if ($month && $month >= 1 && $month <= 12) {
+                $q->whereMonth('date', (int) $month);
             }
-
-            // Rango de fechas
             if ($request->filled('from')) {
                 $q->whereDate('date', '>=', $request->from);
             }
@@ -47,10 +86,9 @@ class HolidayController extends Controller
 
             $q->orderBy('date');
 
-            $perPage = (int) ($request->get('per_page', 50));
             return $perPage > 0 ? $q->paginate($perPage) : $q->get();
         } catch (\Throwable $e) {
-            Log::error('Holiday@index: '.$e->getMessage());
+            Log::error('Holiday@index: '.$e->getMessage().' @'.$e->getFile().':'.$e->getLine());
             return response()->json(['message' => 'Error interno'], 500);
         }
     }

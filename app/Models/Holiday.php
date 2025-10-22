@@ -16,6 +16,7 @@ class Holiday extends Model
         'name',
         'scope',  // 'national' | 'company'
         'paid',   // Si lo necesita la tabla
+        'origin', // 'manual' | 'default'
     ];
 
     protected $casts = [
