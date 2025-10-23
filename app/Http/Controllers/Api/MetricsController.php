@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use App\Models\Employee;
-use App\Services\HoursCalculatorService;   // <- nuestro servicio en app/Services
+use App\Services\HoursCalculatorService;
 use Carbon\Carbon;
 
 class MetricsController extends Controller
