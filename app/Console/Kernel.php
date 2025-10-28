@@ -34,6 +34,14 @@ class Kernel extends ConsoleKernel
         $schedule->call(function () {
             Log::info('[Scheduler] Heartbeat 1min: '.now()->toDateTimeString());
         })->everyMinute()->timezone('America/Costa_Rica');
+
+        $schedule->call(function () {
+            try {
+                app(\App\Services\HolidaySetupService::class)->ensure();
+            } catch (\Throwable $e) {
+                \Log::warning('[Holidays ensure via scheduler] '.$e->getMessage());
+            }
+        })->dailyAt('02:15')->timezone('America/Costa_Rica');
     }
 
     /**

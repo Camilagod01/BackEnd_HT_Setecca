@@ -19,6 +19,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        try {
+            app(\App\Services\HolidaySetupService::class)->ensure();
+        } catch (\Throwable $e) {
+            \Log::warning('[Holidays ensure] '.$e->getMessage());
+        }
     }
 }
