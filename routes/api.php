@@ -158,3 +158,5 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Estado de cuenta
     Route::get('/statements/{id}', [StatementController::class, 'show']);
+    Route::get('statements/{id}/export', [StatementController::class, 'export']);
+    Route::get('/statements/by-code/{code}', [StatementController::class, 'showByCode']);

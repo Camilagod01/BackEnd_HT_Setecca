@@ -166,4 +166,9 @@ class StatementService
         }
         return $vCRC;
     }
+
+    public function build(int $employeeId, ?string $from, ?string $to): array
+    {
+        return $this->generate($employeeId, $from ?? now()->startOfMonth()->toDateString(), $to ?? now()->endOfMonth()->toDateString());
+    }
 }
