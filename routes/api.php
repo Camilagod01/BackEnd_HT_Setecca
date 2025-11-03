@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\PayrollSettingController;
 use App\Http\Controllers\Api\JustificationController;
 use App\Http\Controllers\Api\ReportsController;
 use App\Http\Controllers\Api\StatementController;
+use App\Http\Controllers\Api\EmployeeImportController;
 
 //  Público
 Route::post('/login', [AuthController::class, 'login']);
@@ -83,20 +84,20 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 
-    //Adelantos
+    // Adelantos
     Route::get('/advances', [AdvanceController::class, 'index']);
     Route::post('/advances', [AdvanceController::class, 'store']);
     Route::patch('/advances/{advance}', [AdvanceController::class, 'update']);
     Route::delete('/advances/{advance}', [AdvanceController::class, 'destroy']);
 
-    //Prestamos
+    // Prestamos
     Route::get('/loans', [LoanController::class, 'index']);
     Route::get('/loans/{loan}', [LoanController::class, 'show']);
     Route::post('/loans', [LoanController::class, 'store']);
     Route::patch('/loans/{loan}', [LoanController::class, 'update']);
     Route::delete('/loans/{loan}', [LoanController::class, 'destroy']);
 
-    // cuotas de un préstamo
+    // Cuotas de un préstamo
     Route::get('/loans/{loan}/payments', [LoanController::class, 'payments']);
 
     // Incapacidades
@@ -114,7 +115,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/vacations/{vacation}',     [VacationController::class, 'destroy'])->whereNumber('vacation');
 
 
-    //PruebaVacaciones
+    // PruebaVacaciones
     Route::patch('/vacations/{id}/status', function(Request $r, $id) {
         $v = Vacation::findOrFail($id);
         $status = $r->input('status');
@@ -127,25 +128,25 @@ Route::middleware('auth:sanctum')->group(function () {
     })->whereNumber('id');
 
 
-    //Permisos
+    // Permisos
     Route::get   ('/absences',             [AbsenceController::class, 'index']);
     Route::post  ('/absences',             [AbsenceController::class, 'store']);
     Route::get   ('/absences/{absence}',   [AbsenceController::class, 'show'])->whereNumber('absence');
     Route::patch ('/absences/{absence}',   [AbsenceController::class, 'update'])->whereNumber('absence');
     Route::delete('/absences/{absence}',   [AbsenceController::class, 'destroy'])->whereNumber('absence');
 
-    //Feriados
+    // Feriados
     Route::get   ('/holidays',            [HolidayController::class, 'index']);
     Route::post  ('/holidays',            [HolidayController::class, 'store']);
     Route::get   ('/holidays/{holiday}',  [HolidayController::class, 'show'])->whereNumber('holiday');
     Route::patch ('/holidays/{holiday}',  [HolidayController::class, 'update'])->whereNumber('holiday');
     Route::delete('/holidays/{holiday}',  [HolidayController::class, 'destroy'])->whereNumber('holiday');
 
-    //Configuración de Planilla
+    // Configuración de Planilla
     Route::get('/payroll-settings',  [PayrollSettingController::class, 'show']);
     Route::patch('/payroll-settings',[PayrollSettingController::class, 'update']);
 
-    //Justificaciones
+    // Justificaciones
     Route::get   ('/justifications',                     [JustificationController::class, 'index']);
     Route::post  ('/justifications',                     [JustificationController::class, 'store']);
     Route::get   ('/justifications/{justification}',     [JustificationController::class, 'show'])->whereNumber('justification');
@@ -153,10 +154,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch ('/justifications/{justification}/status', [JustificationController::class, 'updateStatus'])->whereNumber('justification');
     Route::delete('/justifications/{justification}',     [JustificationController::class, 'destroy'])->whereNumber('justification');
 
-    //Reportes
+    // Reportes
     Route::get('/reports/summary', [ReportsController::class, 'summary']);
 
     // Estado de cuenta
     Route::get('/statements/{id}', [StatementController::class, 'show']);
     Route::get('statements/{id}/export', [StatementController::class, 'export']);
     Route::get('/statements/by-code/{code}', [StatementController::class, 'showByCode']);
+
+    // Importe de empleados
+    Route::post('/employees/import', [EmployeeImportController::class, 'import']);
+    Route::get('/employees/import/template', [EmployeeImportController::class, 'template']);
