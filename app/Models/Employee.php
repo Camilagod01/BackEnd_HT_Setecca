@@ -18,7 +18,7 @@ class Employee extends Model
         'hire_date',
         'status',
         'position_id',
-
+         'garnish_cap_rate',
         // Nuevos campos para herencia/override de salario
         'use_position_salary',
         'salary_type',              // 'monthly' | 'hourly'
@@ -30,6 +30,8 @@ class Employee extends Model
         'hire_date' => 'date:Y-m-d',
         'use_position_salary'     => 'boolean',
         'salary_override_amount'  => 'decimal:2',
+        'garnish_cap_rate' => 'float',
+
     ];
 
     protected $appends = [

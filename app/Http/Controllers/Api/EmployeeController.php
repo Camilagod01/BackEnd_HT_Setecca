@@ -3,29 +3,27 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\StoreEmployeeRequest;
+use App\Http\Requests\UpdateEmployeeRequest;
+use App\Http\Resources\EmployeeResource;
 use App\Models\Employee;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
-use App\Traits\AuditsChanges;
 
 class EmployeeController extends Controller
 {
-    use AuditsChanges;
-
-    // GET /api/employees
     public function index(Request $request)
     {
         $q = Employee::query()
             ->leftJoin('positions', 'employees.position_id', '=', 'positions.id')
-            ->select('employees.*', 'positions.name as position_name')
-            ->orderBy('employees.id', 'desc');
+            ->select('employees.*', 'positions.name as position_name');
 
+        // filtros
         if ($s = $request->get('search')) {
             $q->where(function ($qq) use ($s) {
                 $qq->where('employees.code', 'like', "%{$s}%")
-                    ->orWhere('employees.first_name', 'like', "%{$s}%")
-                    ->orWhere('employees.last_name', 'like', "%{$s}%")
-                    ->orWhere('employees.email', 'like', "%{$s}%");
+                   ->orWhere('employees.first_name', 'like', "%{$s}%")
+                   ->orWhere('employees.last_name', 'like', "%{$s}%")
+                   ->orWhere('employees.email', 'like', "%{$s}%");
             });
         }
 
@@ -37,184 +35,126 @@ class EmployeeController extends Controller
             $q->where('employees.position_id', $pid);
         }
 
+        // orden
+        $sort = $request->query('sort', 'employees.id');
+        $dir  = $request->query('dir', 'desc');
+        if (!in_array(strtolower($dir), ['asc','desc'])) $dir = 'desc';
+        $q->orderBy($sort, $dir);
+
         $perPage = (int) $request->query('per_page', 15);
         if ($perPage <= 0 || $perPage > 100) $perPage = 15;
 
-        return response()->json($q->paginate($perPage));
+        $page = $q->paginate($perPage);
+
+        // transforma cada item con resource “liviano” para lista
+        $page->getCollection()->transform(function ($emp) {
+            return [
+                'id'            => $emp->id,
+                'code'          => $emp->code,
+                'first_name'    => $emp->first_name,
+                'last_name'     => $emp->last_name,
+                'full_name'     => trim(($emp->first_name ?? '').' '.($emp->last_name ?? '')),
+                'email'         => $emp->email,
+                'position_id'   => $emp->position_id,
+                'position_name' => $emp->position_name,
+                'status'        => $emp->status,
+                'hire_date'     => optional($emp->hire_date)->toDateString(),
+            ];
+        });
+
+        return response()->json($page);
     }
 
-    // GET /api/employees/{id}
     public function show($id)
     {
         $emp = Employee::with('position')->findOrFail($id);
-        return response()->json($emp);
+        return response()->json(['data' => EmployeeResource::make($emp)]);
     }
 
-    // POST /api/employees
-    public function store(Request $request)
+    public function store(StoreEmployeeRequest $request)
     {
-        $data = $request->validate([
-            'code'       => ['nullable','string','max:255','unique:employees,code'],
-            'first_name' => ['required','string','max:255'],
-            'last_name'  => ['required','string','max:255'],
-            'email'      => ['nullable','email','max:255','unique:employees,email'],
-            'hire_date'  => ['nullable','date'],
-            'status'     => ['nullable', Rule::in(['active','inactive'])],
-            'position_id'=> ['nullable','exists:positions,id'],
+        $data = $request->validated();
+        $emp  = Employee::create($data);
 
-            'use_position_salary'      => ['boolean'],
-            'salary_type'              => ['required_if:use_position_salary,false','in:monthly,hourly'],
-            'salary_override_amount'   => ['required_if:use_position_salary,false','numeric','min:0'],
-            'salary_override_currency' => ['required_if:use_position_salary,false','in:CRC,USD'],
-        ]);
-
-        // defaults seguros
-        $data['status'] = $data['status'] ?? 'active';
-        $data['use_position_salary'] = $data['use_position_salary'] ?? true;
-
-        if ($data['use_position_salary'] && empty($data['position_id'])) {
-            return response()->json([
-                'message' => 'El puesto (position_id) es requerido cuando use_position_salary=true.'
-            ], 422);
-        }
-
-        // Si usa salario del puesto, setear valores por defecto coherentes
-        if ($data['use_position_salary']) {
-            $data['salary_type'] = 'monthly';
-            $data['salary_override_amount'] = 0;
-            $data['salary_override_currency'] = 'CRC';
-        }
-
-        $emp = Employee::create($data);
+        // si querés devolver el resource completo:
         $emp->load('position');
-
-        if (method_exists($this, 'audit')) {
-            $this->audit($emp, [], $emp->toArray(), 'created');
-        }
-
-        return response()->json($emp, 201);
+        return response()->json(['data' => EmployeeResource::make($emp)], 201);
     }
 
-    // PATCH /api/employees/{id}
+    /*public function update(UpdateEmployeeRequest $request, $id)
+    {
+        $emp  = Employee::findOrFail($id);
+        $data = $request->validated();
+
+        $emp->fill($data)->save();
+
+        $emp->load('position');
+        return response()->json(['data' => EmployeeResource::make($emp)]);
+    }*/
+
+
     public function update(Request $request, $id)
+{
+    $emp = Employee::findOrFail($id);
+
+    $data = $request->validate([
+        'first_name'        => 'sometimes|string|max:100',
+        'last_name'         => 'sometimes|string|max:100',
+        'email'             => 'sometimes|email|unique:employees,email,'.$emp->id,
+        'status'            => 'sometimes|in:active,inactive',
+        'position_id'       => 'sometimes|exists:positions,id',
+        'garnish_cap_rate'  => 'nullable|numeric|min:0|max:1', // <- AÑADIR
+    ]);
+
+    $emp->fill($data); // <- con fillable ya incluirá garnish_cap_rate
+    $emp->save();
+
+    // si usas Resource:
+    return response()->json(['data' => new \App\Http\Resources\EmployeeResource($emp->fresh())]);
+
+    // o, si devuelves el modelo:
+    // return response()->json(['data' => $emp->fresh()]);
+}
+
+
+
+
+
+    public function destroy($id)
     {
-        $emp = Employee::find($id);
-        if (!$emp) return response()->json(['message' => 'Empleado no encontrado'], 404);
+        $emp = Employee::findOrFail($id);
+        $emp->delete();
 
-        $data = $request->validate([
-            'code'       => ['sometimes','string','max:255', Rule::unique('employees','code')->ignore($emp->id)],
-            'first_name' => ['sometimes','string','max:255'],
-            'last_name'  => ['sometimes','string','max:255'],
-            'email'      => ['sometimes','nullable','email','max:255', Rule::unique('employees','email')->ignore($emp->id)],
-            'hire_date'  => ['sometimes','nullable','date'],
-            'status'     => ['sometimes', Rule::in(['active','inactive'])],
-            'position_id'=> ['sometimes','nullable','exists:positions,id'],
-
-            'use_position_salary'      => ['sometimes','boolean'],
-            'salary_type'              => ['sometimes','in:monthly,hourly'],
-            'salary_override_amount'   => ['sometimes','nullable','numeric','min:0'],
-            'salary_override_currency' => ['sometimes','in:CRC,USD'],
-        ]);
-
-        if (
-            array_key_exists('use_position_salary', $data)
-            && $data['use_position_salary'] === true
-            && empty($data['position_id'] ?? $emp->position_id)
-        ) {
-            return response()->json([
-                'message' => 'El puesto (position_id) es requerido cuando use_position_salary=true.'
-            ], 422);
-        }
-
-        $before = $emp->toArray();
-        $emp->fill($data);
-        $emp->save();
-        $emp->load('position');
-
-        if (method_exists($this, 'audit')) {
-            $this->audit($emp, $before, $emp->fresh()->toArray(), 'patched');
-        }
-
-        return response()->json($emp, 200);
+        return response()->json(['ok' => true, 'id' => (int)$id, 'msg' => 'Employee deleted']);
     }
 
-    // PATCH /api/employees/{employee}/position
+    /** Dropdown liviano: id, code, full_name */
+    public function options()
+    {
+        $rows = Employee::query()
+            ->select(['id','code','first_name','last_name'])
+            ->orderBy('code','asc')
+            ->get()
+            ->map(fn($e) => [
+                'id'        => $e->id,
+                'code'      => $e->code,
+                'full_name' => trim(($e->first_name ?? '').' '.($e->last_name ?? '')),
+            ]);
+
+        return response()->json(['data' => $rows]);
+    }
+
+    /** PATCH /employees/{employee}/position  body: { position_id } */
     public function updatePosition(Request $request, Employee $employee)
     {
         $data = $request->validate([
-            'position_id' => ['nullable','exists:positions,id'],
-            'use_position_salary' => ['sometimes','boolean'],
+            'position_id' => ['required','integer','exists:positions,id'],
         ]);
 
-        if (($data['use_position_salary'] ?? $employee->use_position_salary) === true) {
-            $pid = $data['position_id'] ?? $employee->position_id;
-            if (empty($pid)) {
-                return response()->json([
-                    'message' => 'El puesto (position_id) es requerido cuando use_position_salary=true.'
-                ], 422);
-            }
-        }
-
-        $before = $employee->toArray();
-
-        $employee->position_id = $data['position_id'] ?? null;
-        if (array_key_exists('use_position_salary', $data)) {
-            $employee->use_position_salary = $data['use_position_salary'];
-        }
-
-        // Normalizar para evitar nulls indebidos
-        if ($employee->use_position_salary) {
-            $employee->salary_type = $employee->salary_type ?? 'monthly';
-            $employee->salary_override_amount = $employee->salary_override_amount ?? 0;
-            $employee->salary_override_currency = $employee->salary_override_currency ?? 'CRC';
-        }
-
+        $employee->position_id = $data['position_id'];
         $employee->save();
+
         $employee->load('position');
-
-        if (method_exists($this, 'audit')) {
-            $this->audit($employee, $before, $employee->fresh()->toArray(), 'position_changed');
-        }
-
-        return response()->json($employee);
+        return response()->json(EmployeeResource::make($employee));
     }
-
-    // DELETE /api/employees/{id}
-    public function destroy($id)
-    {
-        $emp = Employee::find($id);
-        if (!$emp) return response()->json(['message' => 'Empleado no encontrado'], 404);
-
-        $before = $emp->toArray();
-        $emp->delete();
-
-        if (method_exists($this, 'audit')) {
-            $this->audit($emp, $before, [], 'deleted');
-        }
-
-        return response()->json(['message' => 'Eliminado']);
-    }
-
-    //Opciones de empleados
-    public function options(\Illuminate\Http\Request $request)
-{
-    $q = trim((string)$request->get('q', ''));
-    $limit = (int)$request->get('per_page', 20);
-
-    $rows = \App\Models\Employee::query()
-        ->when($q !== '', function ($qb) use ($q) {
-            $qb->where(function ($w) use ($q) {
-                $w->where('code', 'like', "%{$q}%")
-                  ->orWhere('first_name', 'like', "%{$q}%")
-                  ->orWhere('last_name', 'like', "%{$q}%");
-            });
-        })
-        ->orderBy('first_name')
-        ->orderBy('last_name')
-        ->limit($limit)
-        ->get(['id', 'code', 'first_name', 'last_name']);
-
-    return response()->json($rows);
-}
-
 }

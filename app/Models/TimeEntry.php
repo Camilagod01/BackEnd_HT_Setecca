@@ -20,7 +20,9 @@ class TimeEntry extends Model
     ];
 
     protected $casts = [
-  'work_date' => 'date',
+    'work_date' => 'date',
+    'check_in'  => 'datetime',
+    'check_out' => 'datetime',
 ];
 
     public function employee()

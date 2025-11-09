@@ -21,6 +21,11 @@ use App\Http\Controllers\Api\JustificationController;
 use App\Http\Controllers\Api\ReportsController;
 use App\Http\Controllers\Api\StatementController;
 use App\Http\Controllers\Api\EmployeeImportController;
+use App\Http\Controllers\Api\PayrollPreviewController;
+use App\Http\Controllers\Api\GarnishmentController;
+//use App\Http\Controllers\Api\EmployeeController;
+//use App\Http\Controllers\Api\EmployeeController as ApiEmployeeController;
+
 
 //  Público
 Route::post('/login', [AuthController::class, 'login']);
@@ -82,6 +87,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/reports/attendance/export', [\App\Http\Controllers\Api\Reports\AttendanceReportController::class, 'export']);
    
 });
+
+    //Opciones de empleados
+    //Route::get('/employees/options', [EmployeeController::class, 'options']);
+    Route::get('/employees/options', [EmployeeController::class, 'options'])->name('employees.options');
+
 
 
     // Adelantos
@@ -165,3 +175,17 @@ Route::middleware('auth:sanctum')->group(function () {
     // Importe de empleados
     Route::post('/employees/import', [EmployeeImportController::class, 'import']);
     Route::get('/employees/import/template', [EmployeeImportController::class, 'template']);
+
+    //Dobles feriados, horas extras
+    Route::match(['GET', 'POST'], '/payroll/preview', PayrollPreviewController::class);
+
+    //embargos
+    //Route::get('/garnishments', [GarnishmentController::class, 'index']);
+    Route::get('/garnishments/{id}', [\App\Http\Controllers\Api\GarnishmentController::class, 'show']);
+    Route::post('/garnishments', [\App\Http\Controllers\Api\GarnishmentController::class, 'store']);
+    Route::patch('/garnishments/{garnishment}', [\App\Http\Controllers\Api\GarnishmentController::class, 'update']);
+    Route::delete('/garnishments/{garnishment}', [\App\Http\Controllers\Api\GarnishmentController::class, 'destroy']);
+    Route::get('/garnishments', [GarnishmentController::class, 'index']);
+
+    Route::get('/employees', [EmployeeController::class, 'index']);
+    Route::get('/employees/{id}', [EmployeeController::class, 'show']);

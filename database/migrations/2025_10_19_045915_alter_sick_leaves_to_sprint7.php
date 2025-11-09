@@ -8,15 +8,15 @@ use Illuminate\Support\Facades\DB;
 return new class extends Migration {
     public function up(): void
     {
-        // Si lo necesita la tabla: asegurar columnas y tipos objetivo del Sprint 7
-        // Objetivo:
-        // id, employee_id (FK, cascade), start_date, end_date, total_days,
-        // provider ENUM('CCSS','INS','OTHER') default 'CCSS',
-        // coverage_percent DECIMAL(5,2) default 0.00,
-        // status ENUM('pending','approved','rejected') default 'pending',
-        // notes TEXT nullable, created_by, updated_by, timestamps
+        /**
+         * Objetivo Sprint 7 (sick_leaves):
+         *  - Campos base: employee_id (FK), start_date, end_date, total_days, notes, created_by, updated_by, timestamps
+         *  - provider: ENUM('CCSS','INS','OTHER') default 'CCSS'  [MySQL] | string(20) con datos normalizados [SQLite]
+         *  - coverage_percent: DECIMAL(5,2) default 0.00 (sin romper SQLite)
+         *  - status: ENUM('pending','approved','rejected') default 'pending' [MySQL] | string(20) con datos normalizados [SQLite]
+         */
 
-        // FK y campos base
+        // 1) Campos base (no tocar orden/posiciones para evitar AFTER en SQLite)
         Schema::table('sick_leaves', function (Blueprint $table) {
             if (!Schema::hasColumn('sick_leaves', 'employee_id')) {
                 $table->foreignId('employee_id')->constrained()->cascadeOnDelete();
@@ -39,51 +39,83 @@ return new class extends Migration {
             if (!Schema::hasColumn('sick_leaves', 'updated_by')) {
                 $table->unsignedBigInteger('updated_by')->nullable();
             }
+            if (!Schema::hasColumn('sick_leaves', 'created_at')) {
+                $table->timestamps();
+            }
         });
 
-        // provider enum
-        if (Schema::hasColumn('sick_leaves', 'provider')) {
-            DB::statement("ALTER TABLE sick_leaves MODIFY provider ENUM('CCSS','INS','OTHER') NOT NULL DEFAULT 'CCSS'");
+        // 2) provider / status con compatibilidad de motor
+        $driver = DB::getDriverName();
+
+        if ($driver !== 'sqlite') {
+            // --- MySQL/MariaDB: usar ENUM y MODIFY/ADD según exista o no ---
+            if (Schema::hasColumn('sick_leaves', 'provider')) {
+                DB::statement("ALTER TABLE sick_leaves MODIFY provider ENUM('CCSS','INS','OTHER') NOT NULL DEFAULT 'CCSS'");
+            } else {
+                Schema::table('sick_leaves', function (Blueprint $table) {
+                    $table->enum('provider', ['CCSS','INS','OTHER'])->default('CCSS');
+                });
+            }
+
+            if (Schema::hasColumn('sick_leaves', 'status')) {
+                DB::statement("ALTER TABLE sick_leaves MODIFY status ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending'");
+            } else {
+                Schema::table('sick_leaves', function (Blueprint $table) {
+                    $table->enum('status', ['pending','approved','rejected'])->default('pending');
+                });
+            }
         } else {
-            Schema::table('sick_leaves', function (Blueprint $table) {
-                $table->enum('provider', ['CCSS','INS','OTHER'])->default('CCSS')->after('total_days');
-            });
+            // --- SQLite: no hay ENUM ni MODIFY → usamos string + normalización de datos ---
+            if (!Schema::hasColumn('sick_leaves', 'provider')) {
+                Schema::table('sick_leaves', function (Blueprint $table) {
+                    $table->string('provider', 20)->nullable();
+                });
+            }
+            DB::table('sick_leaves')->whereNull('provider')->update(['provider' => 'CCSS']);
+
+            if (!Schema::hasColumn('sick_leaves', 'status')) {
+                Schema::table('sick_leaves', function (Blueprint $table) {
+                    $table->string('status', 20)->nullable();
+                });
+            }
+            DB::table('sick_leaves')->whereNull('status')->update(['status' => 'pending']);
         }
 
-        // coverage_percent
+        // 3) coverage_percent con compatibilidad
         if (Schema::hasColumn('sick_leaves', 'coverage_percent')) {
-            DB::statement("ALTER TABLE sick_leaves MODIFY coverage_percent DECIMAL(5,2) NOT NULL DEFAULT 0.00");
+            if ($driver !== 'sqlite') {
+                // MySQL/MariaDB: forzar tipo/DEFAULT
+                DB::statement("ALTER TABLE sick_leaves MODIFY coverage_percent DECIMAL(5,2) NOT NULL DEFAULT 0.00");
+            } else {
+                // SQLite: no se puede MODIFY → normalizar por datos
+                DB::table('sick_leaves')->whereNull('coverage_percent')->update(['coverage_percent' => 0.00]);
+                // (Si existiera como texto, igual funciona para tests; no alteramos el tipo en SQLite)
+            }
         } else {
             Schema::table('sick_leaves', function (Blueprint $table) {
-                $table->decimal('coverage_percent', 5, 2)->default(0.00)->after('provider');
-            });
-        }
-
-        // status enum (volver a crear si difiere)
-        if (Schema::hasColumn('sick_leaves', 'status')) {
-            DB::statement("ALTER TABLE sick_leaves MODIFY status ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending'");
-        } else {
-            Schema::table('sick_leaves', function (Blueprint $table) {
-                $table->enum('status', ['pending','approved','rejected'])->default('pending')->after('coverage_percent');
+                $table->decimal('coverage_percent', 5, 2)->default(0.00);
             });
         }
     }
 
     public function down(): void
     {
-        // Reversión conservadora: no eliminamos columnas, solo intentamos revertir tipos críticos a algo genérico
+        // Reversión conservadora (no borramos columnas ni datos).
+        // Solo intentamos relajar tipos en MySQL si fuese necesario; en SQLite no hacemos nada.
         try {
-            if (Schema::hasColumn('sick_leaves', 'provider')) {
-                DB::statement("ALTER TABLE sick_leaves MODIFY provider VARCHAR(20) NOT NULL");
-            }
-            if (Schema::hasColumn('sick_leaves', 'coverage_percent')) {
-                DB::statement("ALTER TABLE sick_leaves MODIFY coverage_percent DECIMAL(5,2) NOT NULL");
-            }
-            if (Schema::hasColumn('sick_leaves', 'status')) {
-                DB::statement("ALTER TABLE sick_leaves MODIFY status VARCHAR(20) NOT NULL");
+            if (DB::getDriverName() !== 'sqlite') {
+                if (Schema::hasColumn('sick_leaves', 'provider')) {
+                    DB::statement("ALTER TABLE sick_leaves MODIFY provider VARCHAR(20) NOT NULL");
+                }
+                if (Schema::hasColumn('sick_leaves', 'status')) {
+                    DB::statement("ALTER TABLE sick_leaves MODIFY status VARCHAR(20) NOT NULL");
+                }
+                if (Schema::hasColumn('sick_leaves', 'coverage_percent')) {
+                    DB::statement("ALTER TABLE sick_leaves MODIFY coverage_percent DECIMAL(5,2) NOT NULL");
+                }
             }
         } catch (\Throwable $e) {
-            // Si lo necesita la tabla: ignorar errores de down para no bloquear rollbacks
+            // Ignorar en caso de motores/estados que no soporten el cambio inverso
         }
     }
 };

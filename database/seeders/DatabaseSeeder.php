@@ -20,6 +20,7 @@ class DatabaseSeeder extends Seeder
             EmployeeSeeder::class,
             PayrollSettingsSeeder::class,
             OvertimeRulesSeeder::class,
+            GarnishmentSeeder::class,
         ]);
 
         // Crea un usuario de prueba adicional
