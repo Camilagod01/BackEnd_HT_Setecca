@@ -87,4 +87,27 @@ class EmployeeCompService
     }
 
 
+
+public function effectiveComp(int|Employee $employee, ?string $asOf = null): array
+    {
+        // Normaliza: si recibimos ID, buscamos; si recibimos modelo, lo usamos
+        $emp = is_int($employee)
+            ? Employee::with('position')->findOrFail($employee)
+            : $employee->loadMissing('position');
+
+        $amount     = $emp->salary_amount ?? $emp->position->default_salary_amount ?? 0;
+        $currency   = $emp->salary_currency ?? $emp->position->default_salary_currency ?? 'CRC';
+        $salaryType = $emp->position?->salary_type ?? 'monthly';
+
+        return [
+    'salary_type'      => $salaryType,
+    'salary_amount'    => (float) $amount,
+    'salary_currency'  => $currency ?: 'CRC',
+    'position_id'      => $emp->position_id,
+    'as_of'            => $asOf ?: now()->toDateString(),
+            ];
+
+    }
+
+
 }

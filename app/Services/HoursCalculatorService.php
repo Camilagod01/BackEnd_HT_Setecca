@@ -109,7 +109,7 @@ class HoursCalculatorService
             // REGLAS:
             if ($worked > 0) {
                 if ($isSunday || $isHoliday) {
-                    // 💡 Feriado o domingo TRABAJADO: todo a 2x
+                    //  Feriado o domingo TRABAJADO: todo a 2x
                     $x20Today = $worked;
                 } else {
                     // Día laborable trabajado: primeras 8h a 1x, resto a 1.5x
@@ -117,7 +117,7 @@ class HoursCalculatorService
                     $x15Today = max(0.0, $worked - 8.0);
                 }
             } else {
-                // 💡 No hubo horas registradas
+                //  No hubo horas registradas
                 if ($isHoliday && $sickType === null) {
                     // Feriado NO TRABAJADO, SIN incapacidad: se paga a 1x como si se hubiera laborado
                     // Jornada “esperada” que ya calculaste en $expected (L-J 10h, V 8h, S/D 0h)
@@ -181,17 +181,37 @@ class HoursCalculatorService
         }
 
         // Resultado agregado (compatibilidad con tu interfaz actual)
-        return [
-            'from'       => $fromDate,
-            'to'         => $toDate,
-            'total'      => round($sumWorkedAll, 2),
-            'extra_day'  => round($bucket15, 2),  // horas 1.5x finales
-            'extra_week' => round($bucket20, 2),  // horas 2.0x (domingo/feriado + exceso semanal)
-            'sick_50pct_days' => $sick50Days,
-            'sick_0pct_days'  => $sick0Days,
-            'days'       => $byDay,
-            'weeks'      => $weeks,
-        ];
+        // Resultado agregado (compatibilidad con tu interfaz actual)
+// Resultado agregado (compatibilidad con tu interfaz actual)
+return [
+    'from'       => $fromDate,
+    'to'         => $toDate,
+
+    // Horas totales efectivamente trabajadas (según marcaciones)
+    'total'      => round($sumWorkedAll, 2),
+
+    //  Horas pagadas por tramo
+    'hours_1x'   => round($bucketReg, 2),  // horas a 1.0x
+    'hours_1_5x' => round($bucket15, 2),   // horas a 1.5x
+    'hours_2x'   => round($bucket20, 2),   // horas a 2.0x
+
+    //  Nueva métrica: horas pagadas totales (incluye feriados pagados, domingos, extra, etc.)
+    'paid_hours' => round($bucketReg + $bucket15 + $bucket20, 2),
+
+    // Incapacidades en formato que usa PayrollCalculator
+    'sick_days_50' => $sick50Days,
+    'sick_days_0'  => $sick0Days,
+
+    //  Claves que ya usaba tu interfaz actual (para no romper nada)
+    'extra_day'       => round($bucket15, 2), // horas 1.5x finales
+    'extra_week'      => round($bucket20, 2), // horas 2.0x (domingo/feriado + exceso semanal)
+    'sick_50pct_days' => $sick50Days,
+    'sick_0pct_days'  => $sick0Days,
+    'days'            => $byDay,
+    'weeks'           => $weeks,
+];
+
+
     }
 
     /**

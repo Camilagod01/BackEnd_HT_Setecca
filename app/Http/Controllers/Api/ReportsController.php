@@ -5,7 +5,14 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Carbon\Carbon;
+use Symfony\Component\HttpFoundation\StreamedResponse;
+use App\Models\Employee;
+use App\Models\Position;
+use App\Models\TimeEntry;
+use App\Models\SickLeave;
+use Illuminate\Support\Facades\Log;
 
 class ReportsController extends Controller
 {
@@ -21,6 +28,119 @@ class ReportsController extends Controller
      * - ausencias: horas totales (kind=hours) y días solapados (kind=days)
      * - justificaciones: conteo por estado en el rango
      */
+
+    /**
+     * GET /api/reports/attendance?from=YYYY-MM-DD&to=YYYY-MM-DD&search=...
+     * Estructura de respuesta:
+     * {
+     *   "from": "YYYY-MM-DD",
+     *   "to":   "YYYY-MM-DD",
+     *   "rows": [
+     *     {
+     *       "employee_id": 9, "code": "emp-0102", "name": "Empleado Demo",
+     *       "position": "QA Analyst",
+     *       "regular_hours": 0, "overtime_15": 0, "overtime_20": 0,
+     *       "sick_50pct_days": 0, "sick_0pct_days": 0,
+     *       "attendance_days": 0, "total": 0,
+     *       "extra_day": 0, "extra_week": 0
+     *     }
+     *   ],
+     *   "count": 1
+     * }
+     */
+
+
+    public function attendance(Request $request)
+{
+    $from = $request->query('from');
+    $to   = $request->query('to');
+    $search = trim((string) $request->query('search', ''));
+
+    // Normalizar fechas (YYYY-MM-DD)
+    $fromDate = $from ? \Carbon\Carbon::parse($from)->toDateString() : now()->startOfMonth()->toDateString();
+    $toDate   = $to   ? \Carbon\Carbon::parse($to)->toDateString()   : now()->toDateString();
+
+    // Query base: juntamos time_entries con employees y positions
+    $q = \App\Models\TimeEntry::query()
+        ->join('employees', 'time_entries.employee_id', '=', 'employees.id')
+        ->leftJoin('positions', 'employees.position_id', '=', 'positions.id')
+        ->whereBetween('time_entries.work_date', [$fromDate, $toDate]);
+
+    // Búsqueda por código o nombre
+    if ($search !== '') {
+        $q->where(function ($w) use ($search) {
+            $w->where('employees.code', 'like', "%{$search}%")
+              ->orWhereRaw("concat(employees.first_name,' ',employees.last_name) like ?", ["%{$search}%"]);
+        });
+    }
+
+    // Agrupamos por empleado y calculamos horas a partir de check_in / check_out
+    $rows = $q->selectRaw("
+            employees.id   as employee_id,
+            employees.code as code,
+            CONCAT(employees.first_name, ' ', employees.last_name) as name,
+            positions.name as position,
+            SUM(
+                CASE 
+                    WHEN time_entries.check_in IS NOT NULL 
+                     AND time_entries.check_out IS NOT NULL
+                    THEN TIMESTAMPDIFF(MINUTE, time_entries.check_in, time_entries.check_out) / 60
+                    ELSE 0
+                END
+            ) as regular_hours,
+            0 as overtime_15,
+            0 as overtime_20,
+            0 as sick_50pct_days,
+            0 as sick_0pct_days,
+            COUNT(DISTINCT time_entries.work_date) as attendance_days
+        ")
+        ->groupBy('employees.id', 'employees.code', 'employees.first_name', 'employees.last_name', 'positions.name')
+        ->orderBy('name')
+        ->get();
+
+    // Ajustamos formato y agregamos campos extra que espera el front
+    $mapped = $rows->map(function ($r) {
+        $regular = (float) ($r->regular_hours ?? 0);
+        $ot15    = (float) ($r->overtime_15 ?? 0);
+        $ot20    = (float) ($r->overtime_20 ?? 0);
+
+        return [
+            'employee_id'      => (int) $r->employee_id,
+            'code'             => $r->code,
+            'name'             => $r->name,
+            'position'         => $r->position,
+            'regular_hours'    => round($regular, 2),
+            'overtime_15'      => round($ot15, 2),
+            'overtime_20'      => round($ot20, 2),
+            'sick_50pct_days'  => (int) ($r->sick_50pct_days ?? 0),
+            'sick_0pct_days'   => (int) ($r->sick_0pct_days ?? 0),
+            'attendance_days'  => (int) ($r->attendance_days ?? 0),
+            'total'            => round($regular + $ot15 + $ot20, 2),
+            'extra_day'        => 0,
+            'extra_week'       => 0,
+        ];
+    });
+
+    return response()->json([
+        'from'  => $fromDate,
+        'to'    => $toDate,
+        'count' => $mapped->count(),
+        'rows'  => $mapped,
+    ]);
+}
+
+
+    public function attendanceExport(Request $request)
+    {
+        // Por ahora, un stub simple para que el botón de Exportar no rompa:
+        return response()->json(['message' => 'Export CSV pendiente (stub)']);
+    }
+
+
+
+
+
+
     public function summary(Request $request)
     {
         $from = $request->query('from');
@@ -192,4 +312,5 @@ class ReportsController extends Controller
         // Devuelve solo empleados con datos o todos (mantengo todos para consistencia)
         return array_values($byEmp);
     }
+
 }

@@ -181,7 +181,7 @@ public function store(Request $request)
 
 
 
-public function update(UpdateGarnishmentRequest $request, \App\Models\Garnishment $garnishment)
+/* public function update(UpdateGarnishmentRequest $request, \App\Models\Garnishment $garnishment)
 {
     $garnishment->update($request->validated());
 
@@ -203,7 +203,33 @@ public function update(UpdateGarnishmentRequest $request, \App\Models\Garnishmen
         'priority'   => (int)$garnishment->priority,
         'active'     => (bool)$garnishment->active,
     ]);
+}*/
+public function update(Request $request, \App\Models\Garnishment $garnishment)
+{
+    // Reglas de validación (coinciden con lo que envía el front)
+    $validated = $request->validate([
+        'mode'        => 'sometimes|required|in:percent,amount',
+        'value'       => 'sometimes|required|numeric|min:0',
+        'start_date'  => 'sometimes|required|date',
+        'end_date'    => 'nullable|date|after_or_equal:start_date',
+        'priority'    => 'sometimes|required|integer|min:1',
+        'order_no'    => 'nullable|string',
+        'employee_id' => 'sometimes|exists:employees,id',
+        'active'      => 'sometimes|boolean',
+    ]);
+
+    // Asigna y guarda
+    $garnishment->fill($validated);
+    $garnishment->save();
+
+    // Devuelve el mismo formato que usas en index/show
+    return response()->json([
+        'data' => $garnishment->fresh()
+    ], 200);
 }
+
+
+
 
 
 public function destroy(\App\Models\Garnishment $garnishment)

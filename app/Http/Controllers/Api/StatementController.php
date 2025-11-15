@@ -3,23 +3,51 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Services\StatementService;
+//use App\Services\StatementService;
+use App\Services\Statements\StatementService;
+
 use Illuminate\Http\Request;
-use Barryvdh\DomPDF\Facade\Pdf;
+//use Barryvdh\DomPDF\Facade\Pdf;
 use OpenSpout\Writer\XLSX\Writer as XLSXWriter;
 use OpenSpout\Common\Entity\Row;
 use OpenSpout\Common\Entity\Style\Style;
+use App\Models\Employee;
+use App\Models\Garnishment;
+use Dompdf\Dompdf;
+use Dompdf\Options;
+
+
 
 class StatementController extends Controller
 {
     public function __construct(private readonly StatementService $svc) {}
 
-    public function showByCode($code, Request $req)
+    /*public function showByCode($code, Request $req)
     {
         $emp = \App\Models\Employee::where('code', $code)->firstOrFail();
         $data = $this->svc->build($emp->id, $req->query('from'), $req->query('to'));
         return response()->json($data);
+    }*/
+
+
+        public function showByCode(Request $request, string $code)
+{
+    $employee = Employee::where('code', $code)->firstOrFail();
+     return $this->respondByEmployeeId($employee->id, $request);
+}
+
+
+  // ---- helper: arma el estado y responde JSON
+    private function respondByEmployeeId(int $employeeId, Request $request)
+    {
+        $from = $request->query('from');
+        $to   = $request->query('to');
+        $data = $this->svc->build($employeeId, $from, $to);
+        return response()->json($data);
     }
+
+
+
 
     public function export($id, Request $req)
     {
@@ -114,7 +142,77 @@ class StatementController extends Controller
         }
 
 
-        $pdf = Pdf::loadView('pdf.statement', ['s' => $data]);
-        return $pdf->download($filenameBase.'.pdf');
+        /*$pdf = Pdf::loadView('pdf.statement', ['s' => $data]);
+        return $pdf->download($filenameBase.'.pdf');*/
+
+        // Render con Dompdf nativo
+$html = view('pdf.statement', ['s' => $data])->render();
+
+
+// Instanciar Dompdf con o sin Options según versión instalada
+if (class_exists(\Dompdf\Options::class)) {
+    // Dompdf 2.x (o 3.x si mantiene Options)
+    $opts = new \Dompdf\Options();
+    $opts->set('isRemoteEnabled', true);
+    $opts->set('defaultFont', 'DejaVu Sans');
+    $dompdf = new Dompdf($opts);
+} else {
+    // Dompdf 3.x sin Options
+    $dompdf = new Dompdf();
+    // set_option existe en 2.x y 3.x
+    if (method_exists($dompdf, 'set_option')) {
+        $dompdf->set_option('isRemoteEnabled', true);
+        $dompdf->set_option('defaultFont', 'DejaVu Sans');
     }
+}
+
+
+
+/*$options = new Options();
+$options->set('isRemoteEnabled', true);
+$options->set('defaultFont', 'DejaVu Sans'); // evita problemas con tildes/símbolos
+$dompdf = new Dompdf($options);*/
+
+$dompdf->loadHtml($html);
+$dompdf->setPaper('A4', 'portrait');
+$dompdf->render();
+
+return response($dompdf->output(), 200, [
+    'Content-Type' => 'application/pdf',
+    'Content-Disposition' => 'attachment; filename="'.$filenameBase.'.pdf"',
+]);
+
+    }
+
+
+    public function show(Request $request, string $idOrCode)
+{
+    if (is_numeric($idOrCode)) {
+            return $this->respondByEmployeeId((int)$idOrCode, $request);
+        }
+        return $this->showByCode($request, $idOrCode);
+   }
+  
+
+protected function showByEmployeeId(int $employeeId, ?string $from = null, ?string $to = null)
+{
+    try {
+            $data = $this->svc->build($employeeId, $from, $to);
+            return response()->json($data);
+        } catch (\Throwable $e) {
+            \Log::error('Statement build failed', [
+                'employee_id' => $employeeId,
+                'from'        => $from,
+                'to'          => $to,
+                'err'         => $e->getMessage(),
+                'trace'       => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'error'   => 'statement_build_failed',
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+}
+
 }

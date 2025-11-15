@@ -1,10 +1,10 @@
 <?php
 
-use Illuminate\Http\Request;
+/*use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\Api\EmployeeController;
-use App\Http\Controllers\Api\TimeEntryController;
+//use App\Http\Controllers\TimeEntryController;
 use App\Http\Controllers\Api\MetricsController;
 use App\Http\Controllers\Api\TimeEntryExportController;
 use App\Http\Controllers\Api\PositionController;
@@ -23,8 +23,46 @@ use App\Http\Controllers\Api\StatementController;
 use App\Http\Controllers\Api\EmployeeImportController;
 use App\Http\Controllers\Api\PayrollPreviewController;
 use App\Http\Controllers\Api\GarnishmentController;
+
+
+use App\Http\Controllers\EmployeeAttendanceController;
+use App\Http\Controllers\Api\TimeEntryController as ApiTimeEntryController;
 //use App\Http\Controllers\Api\EmployeeController;
 //use App\Http\Controllers\Api\EmployeeController as ApiEmployeeController;
+*/
+
+
+
+
+
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\AuthController;
+use App\Http\Controllers\Api\EmployeeController;
+use App\Http\Controllers\Api\MetricsController;
+use App\Http\Controllers\Api\TimeEntryExportController;
+use App\Http\Controllers\Api\PositionController;
+use App\Http\Controllers\AdvanceController;
+use App\Http\Controllers\LoanController;
+use App\Http\Controllers\LoanPaymentController;
+use App\Http\Controllers\Api\SickLeaveController;
+use App\Http\Controllers\Api\VacationController;
+use App\Models\Vacation;
+use App\Http\Controllers\Api\AbsenceController;
+use App\Http\Controllers\Api\HolidayController;
+use App\Http\Controllers\Api\PayrollSettingController;
+use App\Http\Controllers\Api\JustificationController;
+use App\Http\Controllers\Api\ReportsController;
+use App\Http\Controllers\Api\StatementController;
+use App\Http\Controllers\Api\EmployeeImportController;
+use App\Http\Controllers\Api\PayrollPreviewController;
+use App\Http\Controllers\Api\GarnishmentController;
+
+use App\Http\Controllers\EmployeeAttendanceController;
+use App\Http\Controllers\Api\TimeEntryController as ApiTimeEntryController;
+
+
+
 
 
 //  Público
@@ -40,7 +78,7 @@ Route::get('/employees/options', [EmployeeController::class, 'options'])->name('
 
 
 //  Requieren token
-Route::middleware('auth:sanctum')->group(function () {
+    Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
 
@@ -54,15 +92,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/employees/{employee}/position', [EmployeeController::class, 'updatePosition']);
 
     // Marcaciones
-    Route::get('/time-entries', [TimeEntryController::class, 'index']);
-    Route::post('/time-entries', [TimeEntryController::class, 'store']);
-    Route::patch('/time-entries/{id}', [\App\Http\Controllers\Api\TimeEntryController::class, 'update']);
+    //Route::get('/time-entries', [TimeEntryController::class, 'index']);
+    Route::get('/time-entries', [ApiTimeEntryController::class, 'index']);
 
-    // Métricas
-    Route::get('/metrics/hours', [\App\Http\Controllers\Api\MetricsController::class, 'hours']);
+    Route::post('/time-entries', [ApiTimeEntryController::class, 'store']);
+    //Route::patch('/time-entries/{id}', [\App\Http\Controllers\Api\TimeEntryController::class, 'update']);
+        Route::patch('/time-entries/{id}', [ApiTimeEntryController::class, 'update']);
 
-    Route::patch('/employees/{id}', [\App\Http\Controllers\Api\EmployeeController::class, 'update']);
-
+    
     // Exportar marcaciones
 
     Route::get('/exports/time-entries', [TimeEntryExportController::class, 'global']);
@@ -83,9 +120,16 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/sick-leaves/{id}', [\App\Http\Controllers\Api\SickLeaveController::class, 'destroy']);
 
     // Reporte de asistencia
-    Route::get('/reports/attendance', [\App\Http\Controllers\Api\Reports\AttendanceReportController::class, 'index']);
-    Route::get('/reports/attendance/export', [\App\Http\Controllers\Api\Reports\AttendanceReportController::class, 'export']);
-   
+    //Route::get('/reports/attendance', [\App\Http\Controllers\Api\AttendanceReportController::class, 'index']);
+    //Route::get('/reports/attendance/export', [\App\Http\Controllers\Api\AttendanceReportController::class, 'export']);
+    //Route::get('reports/attendance', [\App\Http\Controllers\Api\ReportsController::class, 'attendance']);
+    //Route::get('reports/attendance/export', [\App\Http\Controllers\Api\ReportsController::class, 'attendanceExport']);
+    //Route::get('reports/attendance', [ReportsController::class, 'attendance']);
+    //Route::get('reports/attendance/export', [ReportsController::class, 'attendanceExport']);
+      //Route::get('/employees/{employee}/attendance', [TimeEntryController::class, 'attendanceForEmployee']);
+    //Route::get('/employees/{employee}/attendance', [\App\Http\Controllers\TimeEntryController::class, 'attendanceForEmployee']);
+        Route::get('/employees/{employee}/attendance',[EmployeeAttendanceController::class, 'attendanceForEmployee']);
+
 });
 
     //Opciones de empleados
@@ -167,6 +211,11 @@ Route::middleware('auth:sanctum')->group(function () {
     // Reportes
     Route::get('/reports/summary', [ReportsController::class, 'summary']);
 
+    //Asistencia Nueva
+    Route::get('/reports/attendance', [ReportsController::class, 'attendance']);
+    Route::get('/reports/attendance/export', [ReportsController::class, 'attendanceExport']);
+
+
     // Estado de cuenta
     Route::get('/statements/{id}', [StatementController::class, 'show']);
     Route::get('statements/{id}/export', [StatementController::class, 'export']);
@@ -189,3 +238,17 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/employees', [EmployeeController::class, 'index']);
     Route::get('/employees/{id}', [EmployeeController::class, 'show']);
+
+    Route::get('/statements/{id}', [\App\Http\Controllers\Api\StatementController::class, 'show']);
+    Route::get('/statements/by-code/{code}', [\App\Http\Controllers\Api\StatementController::class, 'showByCode']);
+
+    // Métricas
+    Route::get('/metrics/hours', [\App\Http\Controllers\Api\MetricsController::class, 'hours']);
+
+    Route::patch('/employees/{id}', [\App\Http\Controllers\Api\EmployeeController::class, 'update']);
+
+
+
+
+
+    
